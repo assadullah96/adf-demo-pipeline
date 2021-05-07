@@ -65,12 +65,12 @@
         "keyVaultName": "[concat(parameters('keyVaultName'), uniquestring(resourceGroup().id))]",
         "serverName": "[concat(parameters('serverName'), uniquestring(resourceGroup().id))]",
         "sqlServerAdministratorLoginPassword": "[concat('P', uniqueString(resourceGroup().id, deployment().name, subscription().subscriptionId), 'x', '!')]",
-        "storageTemplateUri": "https://raw.githubusercontent.com/emumba-msft-data-pipelines/jll-one-click-deployments/main/datasets/jll/covidnyc-data/public/templates/storageAccount/azuredeploy.json",
-        "keyVaultTemplateUri": "https://raw.githubusercontent.com/emumba-msft-data-pipelines/jll-one-click-deployments/main/datasets/jll/covidnyc-data/public/templates/keyVault/azuredeploy.json",
-        "keyVaultPermissionsUpdateTemplateUri": "https://raw.githubusercontent.com/emumba-msft-data-pipelines/jll-one-click-deployments/main/datasets/jll/covidnyc-data/public/templates/keyVaultPermissionsUpdate/azuredeploy.json",
-        "emptyDataFactoryTemplateUri": "https://raw.githubusercontent.com/emumba-msft-data-pipelines/jll-one-click-deployments/main/datasets/jll/covidnyc-data/public/templates/dataFactory/azuredeploy.json",
-        "sqlServerTemplateUri": "https://raw.githubusercontent.com/emumba-msft-data-pipelines/jll-one-click-deployments/main/datasets/jll/covidnyc-data/public/templates/sqlServer/azuredeploy.json",
-        "dataFactoryTemplateUri": "https://raw.githubusercontent.com/emumba-msft-data-pipelines/jll-one-click-deployments/main/datasets/jll/covidnyc-data/public/templates/dataFactoryResources/azuredeploy.json"    
+        "storageTemplateUri": "https://raw.githubusercontent.com/assadullah96/adf-demo-pipeline/main/storageAccount/azuredeploy.json",
+        "keyVaultTemplateUri": "https://raw.githubusercontent.com/assadullah96/adf-demo-pipeline/main/keyVault/azuredeploy.json",
+        "keyVaultPermissionsUpdateTemplateUri": "https://raw.githubusercontent.com/assadullah96/adf-demo-pipeline/main/keyVaultPermissionsUpdate/azuredeploy.json",
+        "emptyDataFactoryTemplateUri": "https://raw.githubusercontent.com/assadullah96/adf-demo-pipeline/main/dataFactory/azuredeploy.json",
+        "sqlServerTemplateUri": "https://raw.githubusercontent.com/assadullah96/adf-demo-pipeline/main/sqlServer/azuredeploy.json",
+        "dataFactoryTemplateUri": "https://raw.githubusercontent.com/assadullah96/adf-demo-pipeline/main/dataFactoryResources/azuredeploy.json"    
     },
     "resources": [
         {
