@@ -1,0 +1,1311 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "factoryName": {
+            "type": "string",
+            "metadata": {
+                "description": "The name you provide will be appended with a unique sting to make it globally available. The name can contain only letters, numbers and hyphens. The first and last characters must be a letter or number. Spaces are not allowed."
+            }
+        },
+
+        "location": {
+            "type": "string",
+            "metadata": {
+                "description": "Location of the data factory. Currently, only East US, East US 2, and West Europe are supported. "
+            }
+        },
+      
+        "serverName": {
+            "type": "string",
+            "metadata": {
+                "description": "The name you provide will be appended with a unique sting to make it globally available. Your server name can contain only lowercase letters, numbers, and '-', but can't start or end with '-' or have more than 50 characters."
+            }
+        },
+        "databaseName": {
+            "type": "string",
+            "metadata": {
+                "description": "Value should not match special patterns. It should contain a length of maximum of 128."
+            }
+        },
+        "sqlServerAdministratorLogin": {
+            "type": "string",
+            "metadata": {
+                "description": "Your login name must not contain a SQL Identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or a built-in database user or role (like dbo, guest, public, etc.)"
+            }
+        },
+
+        "keyVaultName": {
+            "type": "string",
+            "metadata": {
+              "description": "Specifies the name of the key vault."
+            }
+          }
+    },
+    "variables": {
+        "factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]",
+        "covidnyc_http_linkedservice_properties_typeProperties_url": "https://data.cityofnewyork.us/"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.DataFactory/factories",
+            "apiVersion": "2018-06-01",
+            "name": "[parameters('factoryName')]",
+            "location": "[parameters('location')]",
+            "tags": {
+                "Environment": "Public",
+                "AssociatedDataSet": "CovidNYC"
+            },
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "resources": [
+
+                {
+                    "name": "[concat(parameters('factoryName'), '/covidnyc_keyvault_linkedservice')]",
+                    "type": "Microsoft.DataFactory/factories/linkedServices",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "annotations": [],
+                        "type": "AzureKeyVault",
+                        "typeProperties": {
+                            "baseUrl": "[concat('https://',parameters('keyVaultName'),'.vault.azure.net')]"
+                        }
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]"
+                    ]
+                },
+
+                {
+                    "name": "[concat(parameters('factoryName'), '/covidnyc_http_linkedservice')]",
+                    "type": "Microsoft.DataFactory/factories/linkedServices",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "annotations": [],
+                        "type": "HttpServer",
+                        "typeProperties": {
+                            "url": "[variables('covidnyc_http_linkedservice_properties_typeProperties_url')]",
+                            "enableServerCertificateValidation": true,
+                            "authenticationType": "Anonymous"
+                        }
+                    },
+                    "dependsOn": [
+                         "[parameters('factoryName')]"
+                    ]
+               },
+
+                {
+                    "name": "[concat(parameters('factoryName'), '/covidnyc_blobstorage_linkedservice')]",
+                    "type": "Microsoft.DataFactory/factories/linkedServices",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "annotations": [],
+                        "type": "AzureBlobStorage",
+                        "typeProperties": {
+                            "connectionString": {
+                                "type": "AzureKeyVaultSecret",
+                                "store": {
+                                    "referenceName": "covidnyc_keyvault_linkedservice",
+                                    "type": "LinkedServiceReference"
+                                },
+                                "secretName": "storageAccountConnectionString"
+                            }
+                        }
+                    },
+                    "dependsOn": [
+                        "[concat(variables('factoryId'), '/linkedServices/covidnyc_keyvault_linkedservice')]",
+                         "[parameters('factoryName')]"
+                    ]
+            },
+
+             {
+                    "name": "[concat(parameters('factoryName'), '/azure_sql_database_linkedservice')]",
+                    "type": "Microsoft.DataFactory/factories/linkedServices",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "annotations": [],
+                        "type": "AzureSqlDatabase",
+                        "typeProperties": {
+                            "connectionString": "[concat('Server=tcp:',parameters('serverName'),'.database.windows.net,1433;Initial Catalog=',parameters('databaseName'),';Persist Security Info=False;User ID=',parameters('sqlServerAdministratorLogin'),';MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;')]",
+                            "password": {
+                                "type": "AzureKeyVaultSecret",
+                                "store": {
+                                    "referenceName": "covidnyc_keyvault_linkedservice",
+                                    "type": "LinkedServiceReference"
+                                },
+                                "secretName": "sqlServerAdministratorLoginPassword"
+                            }
+                        }
+                    },
+                    "dependsOn": [
+                        "[concat(variables('factoryId'), '/linkedServices/covidnyc_keyvault_linkedservice')]",
+                         "[parameters('factoryName')]"
+                    ]
+            },
+
+
+             {
+                    "name": "[concat(parameters('factoryName'), '/http_source_dataset')]",
+                    "type": "Microsoft.DataFactory/factories/datasets",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "linkedServiceName": {
+                            "referenceName": "covidnyc_http_linkedservice",
+                            "type": "LinkedServiceReference"
+                        },
+                        "parameters": {
+                            "relativeUrl": {
+                                "type": "string"
+                            }
+                        },
+                        "folder": {
+                            "name": "CovidNYC/Sources"
+                        },
+                        "annotations": [],
+                        "type": "DelimitedText",
+                        "typeProperties": {
+                            "location": {
+                                "type": "HttpServerLocation",
+                                "relativeUrl": {
+                                    "value": "@dataset().relativeUrl",
+                                    "type": "Expression"
+                                }
+                            },
+                            "columnDelimiter": ",",
+                            "escapeChar": "\\",
+                            "firstRowAsHeader": true,
+                            "quoteChar": "\""
+                        },
+                        "schema": []
+                    },
+                    "dependsOn": [
+                        "[concat(variables('factoryId'), '/linkedServices/covidnyc_http_linkedservice')]",
+                         "[parameters('factoryName')]"
+                    ]
+                },
+
+            {
+                    "name": "[concat(parameters('factoryName'), '/csv_source_dataset')]",
+                    "type": "Microsoft.DataFactory/factories/datasets",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "linkedServiceName": {
+                            "referenceName": "covidnyc_blobstorage_linkedservice",
+                            "type": "LinkedServiceReference"
+                        },
+                        "parameters": {
+                            "directory": {
+                                "type": "string"
+                            },
+                            "file": {
+                                "type": "string"
+                            },
+                            "container": {
+                                "type": "string"
+                            }
+                        },
+                        "folder": {
+                            "name": "CovidNYC/Sources"
+                        },
+                        "annotations": [],
+                        "type": "DelimitedText",
+                        "typeProperties": {
+                            "location": {
+                                "type": "AzureBlobStorageLocation",
+                                "fileName": {
+                                    "value": "@dataset().file",
+                                    "type": "Expression"
+                                },
+                                "folderPath": {
+                                    "value": "@dataset().directory",
+                                    "type": "Expression"
+                                },
+                                "container": {
+                                    "value": "@dataset().container",
+                                    "type": "Expression"
+                                }
+                            },
+                            "columnDelimiter": ",",
+                            "escapeChar": "\\",
+                            "firstRowAsHeader": true,
+                            "quoteChar": "\""
+                        },
+                        "schema": []
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]",
+                        "[concat(variables('factoryId'), '/linkedServices/covidnyc_blobstorage_linkedservice')]"
+                    ]
+                 },
+
+                    {
+                    "name": "[concat(parameters('factoryName'), '/parquet_sink_dataset')]",
+                    "type": "Microsoft.DataFactory/factories/datasets",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "linkedServiceName": {
+                            "referenceName": "covidnyc_blobstorage_linkedservice",
+                            "type": "LinkedServiceReference"
+                        },
+                        "parameters": {
+                            "container": {
+                                "type": "string"
+                            },
+                            "directory": {
+                                "type": "string"
+                            },
+                            "file": {
+                                "type": "string"
+                            }
+                        },
+                        "folder": {
+                            "name": "CovidNYC/Sinks"
+                        },
+                        "annotations": [],
+                        "type": "Parquet",
+                        "typeProperties": {
+                            "location": {
+                                "type": "AzureBlobStorageLocation",
+                                "folderPath": {
+                                    "value": "@dataset().directory",
+                                    "type": "Expression"
+                                },
+                                "container": {
+                                    "value": "@dataset().container",
+                                    "type": "Expression"
+                                }
+                            },
+                            "compressionCodec": "snappy"
+                        },
+                        "schema": []
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]",
+                        "[concat(variables('factoryId'), '/linkedServices/covidnyc_blobstorage_linkedservice')]"
+                    ]
+              },
+
+
+               {
+                    "name": "[concat(parameters('factoryName'), '/json_sink_dataset')]",
+                    "type": "Microsoft.DataFactory/factories/datasets",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "linkedServiceName": {
+                            "referenceName": "covidnyc_blobstorage_linkedservice",
+                            "type": "LinkedServiceReference"
+                        },
+                        "parameters": {
+                            "container": {
+                                "type": "string"
+                            },
+                            "directory": {
+                                "type": "string"
+                            },
+                            "file": {
+                                "type": "string"
+                            }
+                        },
+                        "folder": {
+                            "name": "CovidNYC/Sinks"
+                        },
+                        "annotations": [],
+                        "type": "Json",
+                        "typeProperties": {
+                            "location": {
+                                "type": "AzureBlobStorageLocation",
+                                "fileName": {
+                                    "value": "@dataset().file",
+                                    "type": "Expression"
+                                },
+                                "folderPath": {
+                                    "value": "@dataset().directory",
+                                    "type": "Expression"
+                                },
+                                "container": {
+                                    "value": "@dataset().container",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        "schema": {}
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]",
+                        "[concat(variables('factoryId'), '/linkedServices/covidnyc_blobstorage_linkedservice')]"
+                    ]
+             },
+
+                {
+                    "name": "[concat(parameters('factoryName'), '/csv_sink_dataset')]",
+                    "type": "Microsoft.DataFactory/factories/datasets",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "linkedServiceName": {
+                            "referenceName": "covidnyc_blobstorage_linkedservice",
+                            "type": "LinkedServiceReference"
+                        },
+                        "parameters": {
+                            "directory": {
+                                "type": "string",
+                                "defaultValue": "curated/covidnyc_data/latest"
+                            },
+                            "file": {
+                                "type": "string",
+                                "defaultValue": "USAFacts_curated_data.csv"
+                            },
+                            "container": {
+                                "type": "string",
+                                "defaultValue": "public"
+                            }
+                        },
+                        "folder": {
+                            "name": "CovidNYC/Sinks"
+                        },
+                        "annotations": [],
+                        "type": "DelimitedText",
+                        "typeProperties": {
+                            "location": {
+                                "type": "AzureBlobStorageLocation",
+                                "folderPath": {
+                                    "value": "@dataset().directory",
+                                    "type": "Expression"
+                                },
+                                "container": {
+                                    "value": "@dataset().container",
+                                    "type": "Expression"
+                                }
+                            },
+                            "columnDelimiter": ",",
+                            "escapeChar": "\\",
+                            "firstRowAsHeader": true,
+                            "quoteChar": "\""
+                        },
+                        "schema": []
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]",
+                        "[concat(variables('factoryId'), '/linkedServices/covidnyc_blobstorage_linkedservice')]"
+                    ]
+            },
+
+            {
+                    "name": "[concat(parameters('factoryName'), '/sql_db_staging_sink')]",
+                    "type": "Microsoft.DataFactory/factories/datasets",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "linkedServiceName": {
+                            "referenceName": "azure_sql_database_linkedservice",
+                            "type": "LinkedServiceReference"
+                        },
+                        "parameters": {
+                            "StagingTable": {
+                                "type": "string"
+                            },
+                            "SchemaName": {
+                                "type": "string"
+                            }
+                        },
+                        "folder": {
+                            "name": "CovidNYC/Sinks"
+                        },
+                        "annotations": [],
+                        "type": "AzureSqlTable",
+                        "schema": [],
+                        "typeProperties": {
+                            "schema": {
+                                "value": "@dataset().SchemaName",
+                                "type": "Expression"
+                            },
+                            "table": {
+                                "value": "@dataset().StagingTable",
+                                "type": "Expression"
+                            }
+                        }
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]",
+                        "[concat(variables('factoryId'), '/linkedServices/azure_sql_database_linkedservice')]"
+                    ]
+            },
+                {
+                    "name": "[concat(parameters('factoryName'), '/sql_db_staging_source')]",
+                    "type": "Microsoft.DataFactory/factories/datasets",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "linkedServiceName": {
+                            "referenceName": "azure_sql_database_linkedservice",
+                            "type": "LinkedServiceReference"
+                        },
+                        "parameters": {
+                            "StagingTable": {
+                                "type": "string"
+                            },
+                            "SchemaName": {
+                                "type": "string"
+                            }
+                        },
+                        "folder": {
+                            "name": "CovidNYC/Sources"
+                        },
+                        "annotations": [],
+                        "type": "AzureSqlTable",
+                        "schema": [],
+                        "typeProperties": {
+                            "schema": {
+                                "value": "@dataset().SchemaName",
+                                "type": "Expression"
+                            },
+                            "table": {
+                                "value": "@dataset().StagingTable",
+                                "type": "Expression"
+                            }
+                        }
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]",
+                        "[concat(variables('factoryId'), '/linkedServices/azure_sql_database_linkedservice')]"
+                    ]
+                },
+                {
+                    "name": "[concat(parameters('factoryName'), '/sql_db_operational_sink')]",
+                    "type": "Microsoft.DataFactory/factories/datasets",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "linkedServiceName": {
+                            "referenceName": "azure_sql_database_linkedservice",
+                            "type": "LinkedServiceReference"
+                        },
+                        "parameters": {
+                            "OperationalTable": {
+                                "type": "string"
+                            },
+                            "SchemaName": {
+                                "type": "string"
+                            }
+                        },
+                        "folder": {
+                            "name": "CovidNYC/Sinks"
+                        },
+                        "annotations": [],
+                        "type": "AzureSqlTable",
+                        "schema": [],
+                        "typeProperties": {
+                            "schema": {
+                                "value": "@dataset().SchemaName",
+                                "type": "Expression"
+                            },
+                            "table": {
+                                "value": "@dataset().OperationalTable",
+                                "type": "Expression"
+                            }
+                        }
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]",
+                        "[concat(variables('factoryId'), '/linkedServices/azure_sql_database_linkedservice')]"
+                    ]
+                },
+
+             {
+                    "name": "[concat(parameters('factoryName'), '/Transformations_Without_SQL_Sink')]",
+                    "type": "Microsoft.DataFactory/factories/dataflows",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "folder": {
+                            "name": "CovidNYC"
+                        },
+                        "type": "MappingDataFlow",
+                        "typeProperties": {
+                            "sources": [
+                                {
+                                    "dataset": {
+                                        "referenceName": "csv_source_dataset",
+                                        "type": "DatasetReference"
+                                    },
+                                    "name": "sourceCSV"
+                                }
+                            ],
+                            "sinks": [
+                                {
+                                    "dataset": {
+                                        "referenceName": "csv_sink_dataset",
+                                        "type": "DatasetReference"
+                                    },
+                                    "name": "SinkLatestCSV"
+                                },
+                                {
+                                    "dataset": {
+                                        "referenceName": "json_sink_dataset",
+                                        "type": "DatasetReference"
+                                    },
+                                    "name": "sinkLatestJsonl"
+                                },
+                                {
+                                    "dataset": {
+                                        "referenceName": "csv_sink_dataset",
+                                        "type": "DatasetReference"
+                                    },
+                                    "name": "SinkCSV"
+                                },
+                                {
+                                    "dataset": {
+                                        "referenceName": "json_sink_dataset",
+                                        "type": "DatasetReference"
+                                    },
+                                    "name": "sinkJsonl"
+                                },
+                                {
+                                    "dataset": {
+                                        "referenceName": "parquet_sink_dataset",
+                                        "type": "DatasetReference"
+                                    },
+                                    "name": "sinkLatestParquet"
+                                },
+                                {
+                                    "dataset": {
+                                        "referenceName": "parquet_sink_dataset",
+                                        "type": "DatasetReference"
+                                    },
+                                    "name": "sinkParquet"
+                                }
+                            ],
+                            "transformations": [
+                                {
+                                    "name": "DropLineageColumn"
+                                },
+                                {
+                                    "name": "LoadDateAndISOCountry"
+                                }
+                            ],
+                            "script": "parameters{\n\tfilename as string ('covid_tracking'),\n\trunid as string ('runtime_guid')\n}\nsource(output(\n\t\tDATE_OF_INTEREST as date 'MM/dd/yyyy',\n\t\tCASE_COUNT as long,\n\t\tHOSPITALIZED_COUNT as long,\n\t\tDEATH_COUNT as long,\n\t\tDEATH_COUNT_PROBABLE as long,\n\t\tCASE_COUNT_7DAY_AVG as long,\n\t\tHOSP_COUNT_7DAY_AVG as long,\n\t\tDEATH_COUNT_7DAY_AVG as long,\n\t\tBX_CASE_COUNT as long,\n\t\tBX_HOSPITALIZED_COUNT as long,\n\t\tBX_DEATH_COUNT as long,\n\t\tBX_CASE_COUNT_7DAY_AVG as long,\n\t\tBX_HOSPITALIZED_COUNT_7DAY_AVG as long,\n\t\tBX_DEATH_COUNT_7DAY_AVG as long,\n\t\tBK_CASE_COUNT as long,\n\t\tBK_HOSPITALIZED_COUNT as long,\n\t\tBK_DEATH_COUNT as long,\n\t\tBK_CASE_COUNT_7DAY_AVG as long,\n\t\tBK_HOSPITALIZED_COUNT_7DAY_AVG as long,\n\t\tBK_DEATH_COUNT_7DAY_AVG as long,\n\t\tMN_CASE_COUNT as long,\n\t\tMN_HOSPITALIZED_COUNT as long,\n\t\tMN_DEATH_COUNT as long,\n\t\tMN_CASE_COUNT_7DAY_AVG as long,\n\t\tMN_HOSPITALIZED_COUNT_7DAY_AVG as long,\n\t\tMN_DEATH_COUNT_7DAY_AVG as long,\n\t\tQN_CASE_COUNT as long,\n\t\tQN_HOSPITALIZED_COUNT as long,\n\t\tQN_DEATH_COUNT as long,\n\t\tQN_CASE_COUNT_7DAY_AVG as long,\n\t\tQN_HOSPITALIZED_COUNT_7DAY_AVG as long,\n\t\tQN_DEATH_COUNT_7DAY_AVG as long,\n\t\tSI_CASE_COUNT as long,\n\t\tSI_HOSPITALIZED_COUNT as long,\n\t\tSI_DEATH_COUNT as long,\n\t\tSI_CASE_COUNT_7DAY_AVG as long,\n\t\tSI_HOSPITALIZED_COUNT_7DAY_AVG as long,\n\t\tSI_DEATH_COUNT_7DAY_AVG as long,\n\t\tINCOMPLETE as long\n\t),\n\tallowSchemaDrift: true,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false,\n\trowUrlColumn: 'lineage') ~> sourceCSV\nLoadDateAndISOCountry select(mapColumn(\n\t\tLOAD_DATE = Load_Date,\n\t\tLOAD_TIME = Load_Time,\n\t\tDATE_OF_INTEREST,\n\t\tCASE_COUNT,\n\t\tHOSPITALIZED_COUNT,\n\t\tDEATH_COUNT,\n\t\tDEATH_COUNT_PROBABLE,\n\t\tCASE_COUNT_7DAY_AVG,\n\t\tHOSP_COUNT_7DAY_AVG,\n\t\tDEATH_COUNT_7DAY_AVG,\n\t\tBX_CASE_COUNT,\n\t\tBX_HOSPITALIZED_COUNT,\n\t\tBX_DEATH_COUNT,\n\t\tBX_CASE_COUNT_7DAY_AVG,\n\t\tBX_HOSPITALIZED_COUNT_7DAY_AVG,\n\t\tBX_DEATH_COUNT_7DAY_AVG,\n\t\tBK_CASE_COUNT,\n\t\tBK_HOSPITALIZED_COUNT,\n\t\tBK_DEATH_COUNT,\n\t\tBK_CASE_COUNT_7DAY_AVG,\n\t\tBK_HOSPITALIZED_COUNT_7DAY_AVG,\n\t\tBK_DEATH_COUNT_7DAY_AVG,\n\t\tMN_CASE_COUNT,\n\t\tMN_HOSPITALIZED_COUNT,\n\t\tMN_DEATH_COUNT,\n\t\tMN_CASE_COUNT_7DAY_AVG,\n\t\tMN_HOSPITALIZED_COUNT_7DAY_AVG,\n\t\tMN_DEATH_COUNT_7DAY_AVG,\n\t\tQN_CASE_COUNT,\n\t\tQN_HOSPITALIZED_COUNT,\n\t\tQN_DEATH_COUNT,\n\t\tQN_CASE_COUNT_7DAY_AVG,\n\t\tQN_HOSPITALIZED_COUNT_7DAY_AVG,\n\t\tQN_DEATH_COUNT_7DAY_AVG,\n\t\tSI_CASE_COUNT,\n\t\tSI_HOSPITALIZED_COUNT,\n\t\tSI_DEATH_COUNT,\n\t\tSI_CASE_COUNT_7DAY_AVG,\n\t\tSI_HOSPITALIZED_COUNT_7DAY_AVG,\n\t\tSI_DEATH_COUNT_7DAY_AVG,\n\t\tINCOMPLETE\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> DropLineageColumn\nsourceCSV derive(Load_Time = currentTimestamp(),\n\t\tLoad_Date = currentDate()) ~> LoadDateAndISOCountry\nDropLineageColumn sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tpartitionFileNames:[(concat($filename, '.csv'))],\n\tpartitionBy('hash', 1),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> SinkLatestCSV\nDropLineageColumn sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tpartitionFileNames:[(concat($filename, '.jsonl'))],\n\tpartitionBy('hash', 1),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> sinkLatestJsonl\nDropLineageColumn sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tpartitionFileNames:[(concat($filename,'_', $runid,'.csv'))],\n\tpartitionBy('hash', 1),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> SinkCSV\nDropLineageColumn sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tpartitionFileNames:[(concat($filename,'_', $runid,'.jsonl'))],\n\tpartitionBy('hash', 1),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> sinkJsonl\nDropLineageColumn sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tformat: 'parquet',\n\tpartitionFileNames:[(concat($filename, '.parquet'))],\n\tpartitionBy('hash', 1),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> sinkLatestParquet\nDropLineageColumn sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tformat: 'parquet',\n\tpartitionFileNames:[(concat($filename,'_', $runid,'.parquet'))],\n\tpartitionBy('hash', 1),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> sinkParquet"
+                        }
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]",
+                        "[concat(variables('factoryId'), '/datasets/csv_source_dataset')]",
+                        "[concat(variables('factoryId'), '/datasets/csv_sink_dataset')]",
+                        "[concat(variables('factoryId'), '/datasets/json_sink_dataset')]",
+                        "[concat(variables('factoryId'), '/datasets/parquet_sink_dataset')]"
+                    ]
+            },
+            {
+                    "name": "[concat(parameters('factoryName'), '/load_into_operational_table_sql')]",
+                    "type": "Microsoft.DataFactory/factories/dataflows",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "folder": {
+                            "name": "CovidNYC"
+                        },
+                        "type": "MappingDataFlow",
+                        "typeProperties": {
+                            "sources": [
+                                {
+                                    "dataset": {
+                                        "referenceName": "sql_db_staging_source",
+                                        "type": "DatasetReference"
+                                    },
+                                    "name": "SqlStagingSource"
+                                }
+                            ],
+                            "sinks": [
+                                {
+                                    "dataset": {
+                                        "referenceName": "sql_db_operational_sink",
+                                        "type": "DatasetReference"
+                                    },
+                                    "name": "SqlOperationalSink"
+                                }
+                            ],
+                            "transformations": [],
+                            "script": "source(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tisolationLevel: 'READ_UNCOMMITTED',\n\tformat: 'table') ~> SqlStagingSource\nSqlStagingSource sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tdeletable:false,\n\tinsertable:true,\n\tupdateable:false,\n\tupsertable:false,\n\tformat: 'table',\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true,\n\terrorHandlingOption: 'stopOnFirstError') ~> SqlOperationalSink"
+                        }
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]",
+                        "[concat(variables('factoryId'), '/datasets/sql_db_staging_source')]",
+                        "[concat(variables('factoryId'), '/datasets/sql_db_operational_sink')]"
+                    ]
+            },
+            {
+                    "name": "[concat(parameters('factoryName'), '/load_into_staging_table_sql')]",
+                    "type": "Microsoft.DataFactory/factories/dataflows",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "folder": {
+                            "name": "CovidNYC"
+                        },
+                        "type": "MappingDataFlow",
+                        "typeProperties": {
+                            "sources": [
+                                {
+                                    "linkedService": {
+                                        "referenceName": "covidnyc_blobstorage_linkedservice",
+                                        "type": "LinkedServiceReference"
+                                    },
+                                    "name": "sourceCSV"
+                                }
+                            ],
+                            "sinks": [
+                                {
+                                    "dataset": {
+                                        "referenceName": "sql_db_staging_sink",
+                                        "type": "DatasetReference"
+                                    },
+                                    "name": "SQLStagingSink"
+                                }
+                            ],
+                            "transformations": [],
+                            "script": "source(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false,\n\tformat: 'delimited',\n\tcontainer: 'public',\n\tfolderPath: 'curated/covidnyc_data/latest',\n\tfileName: 'covidnyc_curated_data.csv',\n\tcolumnDelimiter: ',',\n\tescapeChar: '\\\\',\n\tqutoChar: '\\\"',\n\tcolumnNamesAsHeader: true) ~> sourceCSV\nsourceCSV sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tdeletable:false,\n\tinsertable:true,\n\tupdateable:false,\n\tupsertable:false,\n\tformat: 'table',\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true,\n\terrorHandlingOption: 'stopOnFirstError') ~> SQLStagingSink"
+                        }
+                    },
+                    "dependsOn": [
+                        "[parameters('factoryName')]",
+                        "[concat(variables('factoryId'), '/linkedServices/covidnyc_blobstorage_linkedservice')]",
+                        "[concat(variables('factoryId'), '/datasets/sql_db_staging_sink')]"
+                    ]
+            },
+
+            {
+                    "name": "[concat(parameters('factoryName'), '/CovidNYC_Without_Sql_Sink')]",
+                    "type": "Microsoft.DataFactory/factories/pipelines",
+                    "apiVersion": "2018-06-01",
+                    "properties": {
+                        "activities": [
+                            {
+                                "name": "To Raw Partition",
+                                "description": "",
+                                "type": "Copy",
+                                "dependsOn": [],
+                                "policy": {
+                                    "timeout": "7.00:00:00",
+                                    "retry": 3,
+                                    "retryIntervalInSeconds": 30,
+                                    "secureOutput": false,
+                                    "secureInput": false
+                                },
+                                "userProperties": [],
+                                "typeProperties": {
+                                    "source": {
+                                        "type": "DelimitedTextSource",
+                                        "storeSettings": {
+                                            "type": "HttpReadSettings",
+                                            "requestMethod": "GET"
+                                        },
+                                        "formatSettings": {
+                                            "type": "DelimitedTextReadSettings"
+                                        }
+                                    },
+                                    "sink": {
+                                        "type": "DelimitedTextSink",
+                                        "storeSettings": {
+                                            "type": "AzureBlobStorageWriteSettings"
+                                        },
+                                        "formatSettings": {
+                                            "type": "DelimitedTextWriteSettings",
+                                            "quoteAllText": true,
+                                            "fileExtension": ".csv"
+                                        }
+                                    },
+                                    "enableStaging": false
+                                },
+                                "inputs": [
+                                    {
+                                        "referenceName": "http_source_dataset",
+                                        "type": "DatasetReference",
+                                        "parameters": {
+                                            "relativeUrl": {
+                                                "value": "@pipeline().parameters.sourceRelativeUrl",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                ],
+                                "outputs": [
+                                    {
+                                        "referenceName": "csv_source_dataset",
+                                        "type": "DatasetReference",
+                                        "parameters": {
+                                            "directory": {
+                                                "value": "@concat(pipeline().parameters.rawBlobDirectory,'/',formatdatetime(utcnow(),'yyyy/MM/dd'))",
+                                                "type": "Expression"
+                                            },
+                                            "file": {
+                                                "value": "@concat(pipeline().parameters.sourceFilename,'_',pipeline().RunId,'.csv')",
+                                                "type": "Expression"
+                                            },
+                                            "container": {
+                                                "value": "@pipeline().parameters.blobContainer",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "To Raw Overwrite",
+                                "type": "Copy",
+                                "dependsOn": [],
+                                "policy": {
+                                    "timeout": "7.00:00:00",
+                                    "retry": 3,
+                                    "retryIntervalInSeconds": 30,
+                                    "secureOutput": false,
+                                    "secureInput": false
+                                },
+                                "userProperties": [],
+                                "typeProperties": {
+                                    "source": {
+                                        "type": "DelimitedTextSource",
+                                        "storeSettings": {
+                                            "type": "HttpReadSettings",
+                                            "requestMethod": "GET"
+                                        },
+                                        "formatSettings": {
+                                            "type": "DelimitedTextReadSettings"
+                                        }
+                                    },
+                                    "sink": {
+                                        "type": "DelimitedTextSink",
+                                        "storeSettings": {
+                                            "type": "AzureBlobStorageWriteSettings"
+                                        },
+                                        "formatSettings": {
+                                            "type": "DelimitedTextWriteSettings",
+                                            "quoteAllText": true,
+                                            "fileExtension": ".csv"
+                                        }
+                                    },
+                                    "enableStaging": false
+                                },
+                                "inputs": [
+                                    {
+                                        "referenceName": "http_source_dataset",
+                                        "type": "DatasetReference",
+                                        "parameters": {
+                                            "relativeUrl": {
+                                                "value": "@pipeline().parameters.sourceRelativeUrl",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                ],
+                                "outputs": [
+                                    {
+                                        "referenceName": "csv_source_dataset",
+                                        "type": "DatasetReference",
+                                        "parameters": {
+                                            "directory": {
+                                                "value": "@concat(pipeline().parameters.rawBlobDirectory, '/latest')",
+                                                "type": "Expression"
+                                            },
+                                            "file": {
+                                                "value": "@concat(pipeline().parameters.sourceFilename,'.csv')",
+                                                "type": "Expression"
+                                            },
+                                            "container": {
+                                                "value": "@pipeline().parameters.blobContainer",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "Reformat Columns",
+                                "type": "ExecuteDataFlow",
+                                "dependsOn": [
+                                    {
+                                        "activity": "To Raw Partition",
+                                        "dependencyConditions": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    {
+                                        "activity": "To Raw Overwrite",
+                                        "dependencyConditions": [
+                                            "Succeeded"
+                                        ]
+                                    }
+                                ],
+                                "policy": {
+                                    "timeout": "7.00:00:00",
+                                    "retry": 3,
+                                    "retryIntervalInSeconds": 30,
+                                    "secureOutput": false,
+                                    "secureInput": false
+                                },
+                                "userProperties": [],
+                                "typeProperties": {
+                                    "dataflow": {
+                                        "referenceName": "Transformations_Without_SQL_Sink",
+                                        "type": "DataFlowReference",
+                                        "parameters": {
+                                            "filename": {
+                                                "value": "'@{pipeline().parameters.filename}'",
+                                                "type": "Expression"
+                                            },
+                                            "runid": {
+                                                "value": "'@{pipeline().RunId}'",
+                                                "type": "Expression"
+                                            }
+                                        },
+                                        "datasetParameters": {
+                                            "sourceCSV": {
+                                                "directory": {
+                                                    "value": "@concat(pipeline().parameters.rawBlobDirectory, '/latest')",
+                                                    "type": "Expression"
+                                                },
+                                                "file": {
+                                                    "value": "@concat(pipeline().parameters.sourceFilename,'.csv')",
+                                                    "type": "Expression"
+                                                },
+                                                "container": {
+                                                    "value": "@pipeline().parameters.blobContainer",
+                                                    "type": "Expression"
+                                                }
+                                            },
+                                            "SinkLatestCSV": {
+                                                "directory": {
+                                                    "value": "@concat(pipeline().parameters.curatedBlobDirectory,'/latest')",
+                                                    "type": "Expression"
+                                                },
+                                                "file": {
+                                                    "value": "@concat(pipeline().parameters.filename,'.csv')",
+                                                    "type": "Expression"
+                                                },
+                                                "container": {
+                                                    "value": "@pipeline().parameters.blobContainer",
+                                                    "type": "Expression"
+                                                }
+                                            },
+                                            "sinkLatestJsonl": {
+                                                "container": {
+                                                    "value": "@pipeline().parameters.blobContainer",
+                                                    "type": "Expression"
+                                                },
+                                                "directory": {
+                                                    "value": "@concat(pipeline().parameters.curatedBlobDirectory,'/latest')",
+                                                    "type": "Expression"
+                                                },
+                                                "file": {
+                                                    "value": "@concat(pipeline().parameters.filename,'.jsonl')",
+                                                    "type": "Expression"
+                                                }
+                                            },
+                                            "SinkCSV": {
+                                                "directory": {
+                                                    "value": "@concat(pipeline().parameters.curatedBlobDirectory,'/',formatdatetime(utcnow(),'yyyy/MM/dd'))",
+                                                    "type": "Expression"
+                                                },
+                                                "file": "specified in data flow",
+                                                "container": {
+                                                    "value": "@pipeline().parameters.blobContainer",
+                                                    "type": "Expression"
+                                                }
+                                            },
+                                            "sinkJsonl": {
+                                                "container": {
+                                                    "value": "@pipeline().parameters.blobContainer",
+                                                    "type": "Expression"
+                                                },
+                                                "directory": {
+                                                    "value": "@concat(pipeline().parameters.curatedBlobDirectory,'/',formatdatetime(utcnow(),'yyyy/MM/dd'))",
+                                                    "type": "Expression"
+                                                },
+                                                "file": "specified in data flow"
+                                            },
+                                            "sinkLatestParquet": {
+                                                "container": {
+                                                    "value": "@pipeline().parameters.blobContainer",
+                                                    "type": "Expression"
+                                                },
+                                                "directory": {
+                                                    "value": "@concat(pipeline().parameters.curatedBlobDirectory,'/latest')",
+                                                    "type": "Expression"
+                                                },
+                                                "file": "specified in data flow"
+                                            },
+                                            "sinkParquet": {
+                                                "container": {
+                                                    "value": "@pipeline().parameters.blobContainer",
+                                                    "type": "Expression"
+                                                },
+                                                "directory": {
+                                                    "value": "@concat(pipeline().parameters.curatedBlobDirectory,'/',formatdatetime(utcnow(),'yyyy/MM/dd'))",
+                                                    "type": "Expression"
+                                                },
+                                                "file": "specified in data flow"
+                                            }
+                                        }
+                                    },
+                                    "staging": {},
+                                    "compute": {
+                                        "coreCount": 8,
+                                        "computeType": "General"
+                                    },
+                                    "traceLevel": "Fine"
+                                }
+                            },
+                            {
+                                "name": "JSONL to JSON LATEST",
+                                "type": "Copy",
+                                "dependsOn": [
+                                    {
+                                        "activity": "Reformat Columns",
+                                        "dependencyConditions": [
+                                            "Succeeded"
+                                        ]
+                                    }
+                                ],
+                                "policy": {
+                                    "timeout": "7.00:00:00",
+                                    "retry": 3,
+                                    "retryIntervalInSeconds": 30,
+                                    "secureOutput": false,
+                                    "secureInput": false
+                                },
+                                "userProperties": [],
+                                "typeProperties": {
+                                    "source": {
+                                        "type": "JsonSource",
+                                        "storeSettings": {
+                                            "type": "AzureBlobStorageReadSettings",
+                                            "recursive": true
+                                        }
+                                    },
+                                    "sink": {
+                                        "type": "JsonSink",
+                                        "storeSettings": {
+                                            "type": "AzureBlobStorageWriteSettings"
+                                        },
+                                        "formatSettings": {
+                                            "type": "JsonWriteSettings",
+                                            "filePattern": "arrayOfObjects"
+                                        }
+                                    },
+                                    "enableStaging": false
+                                },
+                                "inputs": [
+                                    {
+                                        "referenceName": "json_sink_dataset",
+                                        "type": "DatasetReference",
+                                        "parameters": {
+                                            "container": {
+                                                "value": "@pipeline().parameters.blobContainer",
+                                                "type": "Expression"
+                                            },
+                                            "directory": {
+                                                "value": "@concat(pipeline().parameters.curatedBlobDirectory,'/latest')",
+                                                "type": "Expression"
+                                            },
+                                            "file": {
+                                                "value": "@concat(pipeline().parameters.filename,'.jsonl')",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                ],
+                                "outputs": [
+                                    {
+                                        "referenceName": "json_sink_dataset",
+                                        "type": "DatasetReference",
+                                        "parameters": {
+                                            "container": {
+                                                "value": "@pipeline().parameters.blobContainer",
+                                                "type": "Expression"
+                                            },
+                                            "directory": {
+                                                "value": "@concat(pipeline().parameters.curatedBlobDirectory,'/latest')",
+                                                "type": "Expression"
+                                            },
+                                            "file": {
+                                                "value": "@concat(pipeline().parameters.filename,'.json')",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "JSONL to JSON",
+                                "type": "Copy",
+                                "dependsOn": [
+                                    {
+                                        "activity": "Reformat Columns",
+                                        "dependencyConditions": [
+                                            "Succeeded"
+                                        ]
+                                    }
+                                ],
+                                "policy": {
+                                    "timeout": "7.00:00:00",
+                                    "retry": 3,
+                                    "retryIntervalInSeconds": 30,
+                                    "secureOutput": false,
+                                    "secureInput": false
+                                },
+                                "userProperties": [],
+                                "typeProperties": {
+                                    "source": {
+                                        "type": "JsonSource",
+                                        "storeSettings": {
+                                            "type": "AzureBlobStorageReadSettings",
+                                            "recursive": true
+                                        },
+                                        "formatSettings": {
+                                            "type": "JsonReadSettings"
+                                        }
+                                    },
+                                    "sink": {
+                                        "type": "JsonSink",
+                                        "storeSettings": {
+                                            "type": "AzureBlobStorageWriteSettings"
+                                        },
+                                        "formatSettings": {
+                                            "type": "JsonWriteSettings",
+                                            "filePattern": "arrayOfObjects"
+                                        }
+                                    },
+                                    "enableStaging": false
+                                },
+                                "inputs": [
+                                    {
+                                        "referenceName": "json_sink_dataset",
+                                        "type": "DatasetReference",
+                                        "parameters": {
+                                            "container": {
+                                                "value": "@pipeline().parameters.blobContainer",
+                                                "type": "Expression"
+                                            },
+                                            "directory": {
+                                                "value": "@concat(pipeline().parameters.curatedBlobDirectory,'/latest')",
+                                                "type": "Expression"
+                                            },
+                                            "file": {
+                                                "value": "@concat(pipeline().parameters.filename,'.jsonl')",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                ],
+                                "outputs": [
+                                    {
+                                        "referenceName": "json_sink_dataset",
+                                        "type": "DatasetReference",
+                                        "parameters": {
+                                            "container": {
+                                                "value": "@pipeline().parameters.blobContainer",
+                                                "type": "Expression"
+                                            },
+                                            "directory": {
+                                                "value": "@concat(pipeline().parameters.curatedBlobDirectory,'/',formatdatetime(utcnow(),'yyyy/MM/dd'))",
+                                                "type": "Expression"
+                                            },
+                                            "file": {
+                                                "value": "@concat(pipeline().parameters.filename,'_',pipeline().RunId,'.json')",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "Create schema if does not exists",
+                                "type": "Lookup",
+                                "dependsOn": [
+                                    {
+                                        "activity": "Reformat Columns",
+                                        "dependencyConditions": [
+                                            "Succeeded"
+                                        ]
+                                    }
+                                ],
+                                "policy": {
+                                    "timeout": "7.00:00:00",
+                                    "retry": 0,
+                                    "retryIntervalInSeconds": 30,
+                                    "secureOutput": false,
+                                    "secureInput": false
+                                },
+                                "userProperties": [],
+                                "typeProperties": {
+                                    "source": {
+                                        "type": "AzureSqlSource",
+                                        "sqlReaderQuery": {
+                                            "value": "IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'covidny')\nBEGIN\nEXEC('CREATE SCHEMA covidny')\nselect Count(*) from sys.symmetric_keys;\nEND\nELSE\nBEGIN\n    select Count(*) from sys.symmetric_keys;\nEND",
+                                            "type": "Expression"
+                                        },
+                                        "queryTimeout": "02:00:00",
+                                        "partitionOption": "None"
+                                    },
+                                    "dataset": {
+                                        "referenceName": "sql_db_staging_source",
+                                        "type": "DatasetReference",
+                                        "parameters": {
+                                            "StagingTable": {
+                                                "value": "StagingCovidny",
+                                                "type": "Expression"
+                                            },
+                                            "SchemaName": {
+                                                "value": "covidny",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    },
+                                    "firstRowOnly": false
+                                }
+                            },
+                            {
+                                "name": "LoadIntoStagingTable_SQL",
+                                "type": "ExecuteDataFlow",
+                                "dependsOn": [
+                                    {
+                                        "activity": "Create schema if does not exists",
+                                        "dependencyConditions": [
+                                            "Succeeded"
+                                        ]
+                                    }
+                                ],
+                                "policy": {
+                                    "timeout": "7.00:00:00",
+                                    "retry": 0,
+                                    "retryIntervalInSeconds": 30,
+                                    "secureOutput": false,
+                                    "secureInput": false
+                                },
+                                "userProperties": [],
+                                "typeProperties": {
+                                    "dataflow": {
+                                        "referenceName": "load_into_staging_table_sql",
+                                        "type": "DataFlowReference",
+                                        "parameters": {},
+                                        "datasetParameters": {
+                                            "sourceCSV": {},
+                                            "SQLStagingSink": {
+                                                "StagingTable": {
+                                                    "value": "StagingCovidny",
+                                                    "type": "Expression"
+                                                },
+                                                "SchemaName": {
+                                                    "value": "covidny",
+                                                    "type": "Expression"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "staging": {},
+                                    "compute": {
+                                        "coreCount": 8,
+                                        "computeType": "General"
+                                    },
+                                    "traceLevel": "Fine"
+                                }
+                            },
+                            {
+                                "name": "LoadIntoOperationalTable_SQL",
+                                "type": "ExecuteDataFlow",
+                                "dependsOn": [
+                                    {
+                                        "activity": "LoadIntoStagingTable_SQL",
+                                        "dependencyConditions": [
+                                            "Succeeded"
+                                        ]
+                                    }
+                                ],
+                                "policy": {
+                                    "timeout": "7.00:00:00",
+                                    "retry": 0,
+                                    "retryIntervalInSeconds": 30,
+                                    "secureOutput": false,
+                                    "secureInput": false
+                                },
+                                "userProperties": [],
+                                "typeProperties": {
+                                    "dataflow": {
+                                        "referenceName": "load_into_operational_table_sql",
+                                        "type": "DataFlowReference",
+                                        "parameters": {},
+                                        "datasetParameters": {
+                                            "SqlStagingSource": {
+                                                "StagingTable": {
+                                                    "value": "StagingCovidny",
+                                                    "type": "Expression"
+                                                },
+                                                "SchemaName": {
+                                                    "value": "covidny",
+                                                    "type": "Expression"
+                                                }
+                                            },
+                                            "SqlOperationalSink": {
+                                                "OperationalTable": {
+                                                    "value": "OperationalCovidny",
+                                                    "type": "Expression"
+                                                },
+                                                "SchemaName": {
+                                                    "value": "covidny",
+                                                    "type": "Expression"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "staging": {},
+                                    "compute": {
+                                        "coreCount": 8,
+                                        "computeType": "General"
+                                    },
+                                    "traceLevel": "Fine"
+                                }
+                            }
+                        ],
+                        "parameters": {
+                            "sourceFilename": {
+                                "type": "string",
+                                "defaultValue": "covidnyc_raw_data"
+                            },
+                            "sourceRelativeUrl": {
+                                "type": "string",
+                                "defaultValue": "/api/views/rc75-m7u3/rows.csv?accessType=DOWNLOAD"
+                            },
+                            "blobContainer": {
+                                "type": "string",
+                                "defaultValue": "public"
+                            },
+                            "rawBlobDirectory": {
+                                "type": "string",
+                                "defaultValue": "raw/covidnyc_data"
+                            },
+                            "curatedBlobDirectory": {
+                                "type": "string",
+                                "defaultValue": "curated/covidnyc_data"
+                            },
+                            "filename": {
+                                "type": "string",
+                                "defaultValue": "covidnyc_curated_data"
+                            }
+                        },
+                        "folder": {
+                            "name": "CovidNYC/BlobStorageDataExtraction"
+                        },
+                        "annotations": [
+                            "covidnyc"
+                        ],
+                        "lastPublishTime": "2021-05-06T12:18:31Z"
+                    },
+                    "dependsOn": [
+                        "[concat(variables('factoryId'), '/datasets/http_source_dataset')]",
+                        "[concat(variables('factoryId'), '/datasets/csv_source_dataset')]",
+                        "[concat(variables('factoryId'), '/dataflows/Transformations_Without_SQL_Sink')]",
+                        "[concat(variables('factoryId'), '/datasets/json_sink_dataset')]",
+                        "[concat(variables('factoryId'), '/datasets/sql_db_staging_source')]",
+                        "[concat(variables('factoryId'), '/dataflows/load_into_staging_table_sql')]",
+                        "[concat(variables('factoryId'), '/dataflows/load_into_operational_table_sql')]"
+                    ]
+                }
+
+            ]
+        }
+    ],
+    "outputs": {}
+}
