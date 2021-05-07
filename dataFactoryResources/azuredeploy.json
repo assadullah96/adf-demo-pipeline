@@ -509,7 +509,7 @@
                 },
 
              {
-                    "name": "[concat(parameters('factoryName'), '/Transformations_Without_SQL_Sink')]",
+                    "name": "[concat(parameters('factoryName'), '/Transformations')]",
                     "type": "Microsoft.DataFactory/factories/dataflows",
                     "apiVersion": "2018-06-01",
                     "properties": {
@@ -668,7 +668,7 @@
             },
 
             {
-                    "name": "[concat(parameters('factoryName'), '/CovidNYC_Without_Sql_Sink')]",
+                    "name": "[concat(parameters('factoryName'), '/covidnyc_with_sql')]",
                     "type": "Microsoft.DataFactory/factories/pipelines",
                     "apiVersion": "2018-06-01",
                     "properties": {
@@ -839,7 +839,7 @@
                                 "userProperties": [],
                                 "typeProperties": {
                                     "dataflow": {
-                                        "referenceName": "Transformations_Without_SQL_Sink",
+                                        "referenceName": "Transformations",
                                         "type": "DataFlowReference",
                                         "parameters": {
                                             "filename": {
@@ -1297,7 +1297,7 @@
                         "[parameters('factoryName')]",
                         "[concat(variables('factoryId'), '/datasets/http_source_dataset')]",
                         "[concat(variables('factoryId'), '/datasets/csv_source_dataset')]",
-                        "[concat(variables('factoryId'), '/dataflows/Transformations_Without_SQL_Sink')]",
+                        "[concat(variables('factoryId'), '/dataflows/Transformations')]",
                         "[concat(variables('factoryId'), '/datasets/json_sink_dataset')]",
                         "[concat(variables('factoryId'), '/datasets/sql_db_staging_source')]",
                         "[concat(variables('factoryId'), '/dataflows/load_into_staging_table_sql')]",
